@@ -1,7 +1,7 @@
 # Trabajo Práctico Final - Recolección de Datos y Análisis Primario (181)
 ### 📊 UNAB - Licenciatura en Ciencia de Datos
 **Profesora:** Rosana Benavidez  
-**Integrantes:** Gustavo y grupo  
+**Integrantes:** grupo  
 
 ---
 
