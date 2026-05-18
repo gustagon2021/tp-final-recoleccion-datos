@@ -1,0 +1,181 @@
+---
+title: "Trabajo Práctico Final: Análisis del Mercado de Películas"
+author: "grupo"
+date: "2026"
+output:
+  html_document:
+    code_folding: hide
+    theme: cosmo
+    toc: true
+    toc_float: true
+---
+```{r carga-datos, message=FALSE, warning=FALSE}
+# ==============================================================================
+# BLOQUE 1: CARGA DE LIBRERÍAS Y RECOLECCIÓN DE DATOS
+# ==============================================================================
+library(tidyverse)
+library(lubridate)
+
+# 1. Definición de la ruta
+ruta_csv <- "C:/Users/gusta/Downloads/Películas_data.csv"
+
+# 2. Carga de datos crudos
+peliculas_raw <- read_csv(ruta_csv)
+
+# 3. Inspección inicial
+glimpse(peliculas_raw)
+```
+
+```{r}
+# ==============================================================================
+# BLOQUE 2: LIMPIEZA, PIVOTEO Y FORMATEO DE FECHAS
+# ==============================================================================
+peliculas_limpio <- peliculas_raw %>% 
+  # Renombrar columnas con nombres difíciles
+  rename(
+    Codigo = Código,
+    Titulo = Título,
+    Fecha_Estreno = `Fecha Estreno`,
+    Origen = `Origen Pelicula`
+  ) %>% 
+  # Pivotear la tabla de formato largo a formato ancho
+  pivot_wider(
+    names_from = `Measure Names`, 
+    values_from = `Measure Values`
+  ) %>% 
+  # Renombrar las nuevas columnas numéricas creadas
+  rename(
+    Recaudacion = `Recaudación ($)`,
+    Entradas = Entradas
+  ) %>% 
+  # Corregir las fechas de manera flexible (evita que aparezcan los NA)
+  mutate(
+    Fecha_Estreno = parse_date_time(Fecha_Estreno, orders = c("dmy", "mdy")) %>% as.Date()
+  )
+
+# Vista previa de la tabla limpia y estructurada
+head(peliculas_limpio, 5)
+```
+```{r}
+# ==============================================================================
+# BLOQUE 3: ANÁLISIS DE CONSISTENCIA (NULOS Y DUPLICADOS)
+# ==============================================================================
+
+# 1. Control de Valores Faltantes (Nulos) por columna
+print("--- Cantidad de Valores Nulos por Columna ---")
+colSums(is.na(peliculas_limpio))
+
+# 2. Control de Filas Duplicadas según el código de la película
+print("--- Cantidad de Filas Duplicadas ---")
+sum(duplicated(peliculas_limpio$Codigo))
+```
+```{r estadisticos-descriptivos}
+# ==============================================================================
+# BLOQUE 4: ESTADÍSTICOS DESCRIPTIVOS GENERALES (FORMATO LEGIBLE)
+# ==============================================================================
+
+# 1. Desactivar la notación científica en R para este bloque
+options(scipen = 999)
+
+print("--- Resumen General de Recaudación ---")
+# Resumen de Recaudación formateado con puntos para los miles
+summary(peliculas_limpio$Recaudacion) %>% 
+  as.matrix() %>% 
+  format(big.mark = ".", decimal.mark = ",", scientific = FALSE) %>% 
+  print()
+
+print("--- Resumen General de Entradas Vendidas ---")
+# Resumen de Entradas formateado con puntos para los miles
+summary(peliculas_limpio$Entradas) %>% 
+  as.matrix() %>% 
+  format(big.mark = ".", decimal.mark = ",", scientific = FALSE) %>% 
+  print()
+
+print("--- Métricas Comparativas por Origen de Película ---")
+# Creamos una tabla limpia convirtiendo la recaudación a "Millones" para que entre en pantalla
+resumen_origen_legible <- peliculas_limpio %>% 
+  group_by(Origen) %>% 
+  summarise(
+    Pelis = n(),
+    Recaudacion_Promedio_Millones = round(mean(Recaudacion, na.rm = TRUE) / 1000000, 2),
+    Recaudacion_Mediana_Millones = round(median(Recaudacion, na.rm = TRUE) / 1000000, 2),
+    Entradas_Promedio = round(mean(Entradas, na.rm = TRUE), 0),
+    Entradas_Maximas = max(Entradas, na.rm = TRUE)
+  ) %>% 
+  arrange(desc(Pelis))
+
+# Aplicamos formato estético final para la impresión en consola
+resumen_origen_legible %>% 
+  mutate(
+    Recaudacion_Promedio_Millones = paste0("$ ", format(Recaudacion_Promedio_Millones, big.mark = ".", decimal.mark = ",")),
+    Recaudacion_Mediana_Millones = paste0("$ ", format(Recaudacion_Mediana_Millones, big.mark = ".", decimal.mark = ",")),
+    Entradas_Promedio = format(Entradas_Promedio, big.mark = ".", decimal.mark = ","),
+    Entradas_Maximas = format(Entradas_Maximas, big.mark = ".", decimal.mark = ",")
+  ) %>% 
+  print()
+```
+
+```{r visualizaciones, message=FALSE, warning=FALSE}
+# ==============================================================================
+# BLOQUE 5: VISUALIZACIÓN DE DATOS (GRAFICOS CON GGPLOT2)
+# ==============================================================================
+
+# 1. Gráfico 1: Boxplot de Recaudación en Millones por Origen
+# Nota: Transformamos la recaudación a millones dentro del gráfico para mejor lectura
+grafico_boxplot <- ggplot(peliculas_limpio, aes(x = Origen, y = Recaudacion / 1000000, fill = Origen)) +
+  geom_boxplot(alpha = 0.7, outlier.color = "red", outlier.shape = 16) +
+  scale_y_log10(labels = scales::dollar_format(prefix = "$ ", big.mark = ".", decimal.mark = ",")) + 
+  labs(
+    title = "Distribución de la Recaudación por Origen de la Película",
+    subtitle = "Escala logarítmica aplicada debido a la alta disparidad de ingresos",
+    x = "Origen de la Película",
+    y = "Recaudación (en Millones de $)",
+    fill = "Categoría"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+print(grafico_boxplot)
+
+# 2. Gráfico 2: Relación entre Entradas Vendidas y Recaudación
+grafico_dispersion <- ggplot(peliculas_limpio, aes(x = Entradas, y = Recaudacion / 1000000, color = Origen)) +
+  geom_point(alpha = 0.6, size = 2.5) +
+  scale_x_continuous(labels = scales::number_format(big.mark = ".", decimal.mark = ",")) +
+  scale_y_continuous(labels = scales::dollar_format(prefix = "$ ", big.mark = ".", decimal.mark = ",")) +
+  labs(
+    title = "Relación entre Entradas Vendidas y Recaudación Total",
+    x = "Cantidad de Entradas Vendidas",
+    y = "Recaudación (en Millones de $)",
+    color = "Origen"
+  ) +
+  theme_minimal()
+
+print(grafico_dispersion)
+```
+```{r analisis-temporal, message=FALSE, warning=FALSE}
+# ==============================================================================
+# BLOQUE 6: ANÁLISIS TEMPORAL (EVOLUCIÓN MENSUAL)
+# ==============================================================================
+
+# 1. Agrupar la recaudación por mes de estreno
+recaudacion_mensual <- peliculas_limpio %>% 
+  mutate(Mes = floor_date(Fecha_Estreno, "month")) %>% 
+  group_by(Mes) %>% 
+  summarise(Recaudacion_Total_Millones = sum(Recaudacion, na.rm = TRUE) / 1000000)
+
+# 2. Graficar la evolución temporal
+grafico_temporal <- ggplot(recaudacion_mensual, aes(x = Mes, y = Recaudacion_Total_Millones)) +
+  geom_line(color = "darkblue", size = 1) +
+  geom_point(color = "red", size = 2) +
+  scale_x_date(date_labels = "%b-%y", date_breaks = "1 month") +
+  scale_y_continuous(labels = scales::dollar_format(prefix = "$ ", big.mark = ".", decimal.mark = ",")) +
+  labs(
+    title = "Evolución de la Recaudación Total por Mes de Estreno (2026)",
+    subtitle = "Análisis de estacionalidad en la taquilla",
+    x = "Mes de Estreno",
+    y = "Recaudación Total (en Millones de $)"
+  ) +
+  theme_minimal()
+
+print(grafico_temporal)
+```
